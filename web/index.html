@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A股「缩量企稳反转」策略回测台</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --panel:#ffffff; --line:#e3e6ec; --line2:#eef1f5;
+    --tx:#1c2330; --tx2:#5b6577; --tx3:#8b95a7;
+    --red:#d5372c; --green:#12885b; --blue:#2b6cb0; --amber:#b7791f;
+    --chip:#f0f3f8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);
+       font:14px/1.55 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+  header{background:#fff;border-bottom:1px solid var(--line);padding:14px 22px;
+         display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+  header h1{font-size:17px;margin:0;font-weight:650}
+  header .sub{color:var(--tx3);font-size:12.5px}
+  .wrap{display:grid;grid-template-columns:330px 1fr;gap:16px;padding:16px 22px 40px;
+        align-items:start}
+  @media(max-width:1080px){.wrap{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px}
+  .card>.hd{padding:10px 14px;border-bottom:1px solid var(--line2);font-weight:640;
+            font-size:13.5px;display:flex;justify-content:space-between;align-items:center}
+  .card>.bd{padding:12px 14px}
+  .ctrl{position:sticky;top:16px;max-height:calc(100vh - 40px);overflow:auto}
+  label.f{display:block;font-size:12.5px;color:var(--tx2);margin:10px 0 4px;font-weight:560}
+  select,input,button{font:inherit}
+  select,input[type=text],input[type=date],input[type=number]{
+    width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;
+    background:#fff;color:var(--tx)}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  button.go{width:100%;margin-top:14px;padding:10px;border:0;border-radius:8px;
+            background:var(--blue);color:#fff;font-weight:620;cursor:pointer}
+  button.go:disabled{background:#9db2cc;cursor:default}
+  .picks{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px;max-height:110px;overflow:auto}
+  .pick{background:var(--chip);border:1px solid var(--line);border-radius:5px;
+        padding:2px 6px;font-size:12px;display:flex;gap:5px;align-items:center}
+  .pick b{font-weight:500;color:var(--tx2)}
+  .pick span{cursor:pointer;color:var(--tx3)}
+  .cands{border:1px solid var(--line);border-radius:6px;max-height:150px;overflow:auto;
+         margin-top:6px;display:none}
+  .cands.on{display:block}
+  .cand{padding:4px 8px;cursor:pointer;font-size:12.5px;display:flex;justify-content:space-between}
+  .cand:hover{background:#f4f7fc}
+  .cand .b{color:var(--tx3)}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:9px}
+  .kpi{background:#fafbfd;border:1px solid var(--line2);border-radius:8px;padding:8px 10px}
+  .kpi .k{font-size:11.5px;color:var(--tx3)}
+  .kpi .v{font-size:16px;font-weight:650;margin-top:2px;font-variant-numeric:tabular-nums}
+  .pos{color:var(--red)} .neg{color:var(--green)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{padding:4px 6px;border-bottom:1px solid var(--line2);text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  th{color:var(--tx3);font-weight:560;position:sticky;top:0;background:#fff}
+  .sc{max-height:240px;overflow:auto}
+  .hint{font-size:12px;color:var(--tx3);margin-top:8px;line-height:1.6}
+  .warn{background:#fff8e8;border:1px solid #f2dfae;color:#7a5b12;border-radius:8px;
+        padding:8px 10px;font-size:12.5px;margin-bottom:10px}
+  .empty{color:var(--tx3);padding:26px;text-align:center}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:900px){.grid2{grid-template-columns:1fr}}
+  .lgd{font-size:11.5px;color:var(--tx3);margin-top:4px}
+  .tag{display:inline-block;padding:1px 6px;border-radius:4px;background:var(--chip);
+       font-size:11.5px;color:var(--tx2);margin-left:6px}
+  .spin{display:inline-block;width:12px;height:12px;border:2px solid #cfd8e4;
+        border-top-color:#fff;border-radius:50%;animation:sp .8s linear infinite;
+        vertical-align:-1px;margin-right:6px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<header>
+  <h1>A股「缩量企稳反转」策略回测台</h1>
+  <span class="sub">信号 T 日收盘产生 · T+1 开盘执行 · 含手续费/印花税/滑点/涨跌停/停牌约束 · 无未来函数</span>
+</header>
+
+<div class="wrap">
+  <!-- ============ 左：控制面板 ============ -->
+  <div class="card ctrl">
+    <div class="hd">回测参数</div>
+    <div class="bd">
+      <label class="f">股票池</label>
+      <select id="pool"></select>
+
+      <div id="customBox" style="display:none">
+        <label class="f">搜索股票（代码或名称）</label>
+        <input type="text" id="q" placeholder="如 600519 / 茅台" autocomplete="off">
+        <div class="cands" id="cands"></div>
+        <div class="picks" id="picks"></div>
+        <div class="lgd">已选 <b id="pickN">0</b> 只</div>
+      </div>
+
+      <div class="row2">
+        <div><label class="f">开始日期</label><input type="date" id="start"></div>
+        <div><label class="f">结束日期</label><input type="date" id="end"></div>
+      </div>
+
+      <label class="f">前置超跌（ret20 横截面分位）</label>
+      <select id="rng">
+        <option value="D2-D6" selected>D2~D6（适度超跌·默认）</option>
+        <option value="D1-D3">D1~D3（极端超跌）</option>
+        <option value="D3-D7">D3~D7</option>
+        <option value="D4-D8">D4~D8</option>
+        <option value="D1-D10">全市场（不限超跌）</option>
+      </select>
+
+      <label class="f">缩量定义</label>
+      <select id="vol">
+        <option value="A" selected>A：VOL_t &lt; VOL_t-1 &lt; VOL_t-2</option>
+        <option value="B">B：近 5 日成交量连续下降</option>
+        <option value="C">C：VOL &lt; VOL20×0.5（地量）</option>
+        <option value="D">D：VOL &lt; VOL20×0.7</option>
+        <option value="E">E：近 3 日均量 &lt; VOL20×0.6</option>
+        <option value="NONE">不设缩量条件</option>
+      </select>
+
+      <label class="f">企稳定义</label>
+      <select id="stab">
+        <option value="A" selected>A：收盘 ≥ 前一日收盘</option>
+        <option value="B">B：连续 2 日不创新低</option>
+        <option value="C">C：5 日低点后 2 日未破</option>
+        <option value="D">D：Low ≥ 前低 且 收盘 &gt; 开盘</option>
+        <option value="E">E：收盘重新站上 MA5</option>
+        <option value="NONE">不设企稳条件</option>
+      </select>
+
+      <label class="f">买入规则</label>
+      <select id="buy_rule">
+        <option value="A" selected>A：超跌 + 缩量 + 企稳</option>
+        <option value="B">B：超跌 + 缩量 + 不创新低 + 收盘上涨</option>
+        <option value="C">C：超跌 + 缩量 + 不创新低 + 站上 MA5</option>
+      </select>
+
+      <label class="f">止损</label>
+      <select id="sl">
+        <option value="fixed:0.03" selected>固定 -3%（默认）</option>
+        <option value="fixed:0.02">固定 -2%</option>
+        <option value="fixed:0.04">固定 -4%</option>
+        <option value="fixed:0.05">固定 -5%</option>
+        <option value="atr:1">ATR × 1</option>
+        <option value="atr:1.5">ATR × 1.5</option>
+        <option value="atr:2">ATR × 2</option>
+      </select>
+
+      <label class="f">退出方式 / 止盈</label>
+      <select id="exit">
+        <option value="fixed_tp:0.06" selected>固定止盈 +6%（默认）</option>
+        <option value="fixed_tp:0.03">固定止盈 +3%</option>
+        <option value="fixed_tp:0.04">固定止盈 +4%</option>
+        <option value="fixed_tp:0.05">固定止盈 +5%</option>
+        <option value="fixed_tp:0.08">固定止盈 +8%</option>
+        <option value="fixed_tp:0.10">固定止盈 +10%</option>
+        <option value="fixed_tp:0.15">固定止盈 +15%</option>
+        <option value="tp_half_ma5:0.06">+6% 卖 50%，余下跌破 MA5 卖出</option>
+        <option value="ma5:0">不设止盈，跌破 MA5 卖出</option>
+        <option value="ma10:0">不设止盈，跌破 MA10 卖出</option>
+        <option value="macd:0">不设止盈，MACD 死叉卖出</option>
+        <option value="hold:0">不设止盈，仅最长持有</option>
+      </select>
+
+      <div class="row2">
+        <div><label class="f">最长持有(交易日)</label>
+          <input type="number" id="max_hold" value="20" min="2" max="120"></div>
+        <div><label class="f">滑点(单边)</label>
+          <select id="slippage">
+            <option value="0">0</option>
+            <option value="0.0005">5 bp</option>
+            <option value="0.001" selected>10 bp</option>
+            <option value="0.002">20 bp</option>
+            <option value="0.003">30 bp</option>
+          </select></div>
+      </div>
+
+      <label class="f">市场环境过滤</label>
+      <select id="regime_filter">
+        <option value="" selected>不限</option>
+        <option value="above_ma60">仅 指数 &gt; MA60</option>
+        <option value="below_ma60">仅 指数 &lt; MA60</option>
+        <option value="牛市">仅 牛市</option>
+        <option value="熊市">仅 熊市</option>
+        <option value="震荡">仅 震荡市</option>
+      </select>
+
+      <label class="f" style="display:flex;align-items:center;gap:6px;margin-top:12px">
+        <input type="checkbox" id="cost_on" checked style="width:auto">
+        <span>计入手续费 / 印花税 / 过户费</span>
+      </label>
+
+      <button class="go" id="go">运行回测</button>
+      <div class="hint" id="hint">数据区间加载中…</div>
+    </div>
+  </div>
+
+  <!-- ============ 右：结果 ============ -->
+  <div id="out">
+    <div class="card"><div class="empty">
+      选择参数后点击「运行回测」。<br>
+      默认参数 = 超跌D2~D6 + 缩量A + 企稳A + 买入规则A + 止损-3% + 止盈+6%，全A股。
+    </div></div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const fmtP = v => (v==null||!isFinite(v)) ? '—' : (v*100).toFixed(2)+'%';
+const fmtN = v => (v==null||!isFinite(v)) ? '—' : v.toLocaleString();
+const fmt2 = v => (v==null||!isFinite(v)) ? '—' : v.toFixed(2);
+const cls = v => v>0?'pos':(v<0?'neg':'');
+let META = null, PICKS = [], TIMER = null;
+
+async function boot(){
+  const m = await (await fetch('/api/meta')).json();
+  META = m;
+  $('#hint').innerHTML = `本地数据：${m.date_start} ~ ${m.date_end} · ${m.n_codes} 只标的<br>
+     已自动剔除 ST / 退市 / 北交所`;
+  $('#start').value = m.date_start < '2016-01-01' ? '2016-01-01' : m.date_start;
+  $('#end').value = m.date_end;
+
+  const opts = [['all','全部A股（剔除ST/退市）']];
+  for (const [k,v] of Object.entries(m.pools||{})) opts.push([k, `${v.label}（${v.n}只）`]);
+  opts.push(['custom','自定义选股']);
+  $('#pool').innerHTML = opts.map(([k,l])=>`<option value="${k}">${l}</option>`).join('');
+  $('#pool').onchange = () => {
+    $('#customBox').style.display = $('#pool').value==='custom' ? 'block':'none';
+  };
+}
+boot();
+
+// ---- 自定义选股 ----
+$('#q').addEventListener('input', () => {
+  clearTimeout(TIMER);
+  TIMER = setTimeout(async () => {
+    const kw = $('#q').value.trim();
+    if (!kw) { $('#cands').classList.remove('on'); return; }
+    const r = await (await fetch('/api/universe?q='+encodeURIComponent(kw)+'&limit=40')).json();
+    $('#cands').innerHTML = r.map(x =>
+      `<div class="cand" data-c="${x.symbol}"><span>${x.name}</span><span class="b">${x.symbol} · ${x.board}</span></div>`
+    ).join('') || '<div class="cand">无匹配</div>';
+    $('#cands').classList.add('on');
+    $('#cands').querySelectorAll('.cand[data-c]').forEach(e => e.onclick = () => {
+      const c = e.dataset.c;
+      if (!PICKS.find(p=>p.c===c)) PICKS.push({c, n:e.querySelector('span').textContent});
+      $('#q').value=''; $('#cands').classList.remove('on'); renderPicks();
+    });
+  }, 200);
+});
+function renderPicks(){
+  $('#picks').innerHTML = PICKS.map(p =>
+    `<span class="pick"><b>${p.n}</b>${p.c.replace(/^(sh|sz)/,'')}<span data-x="${p.c}">✕</span></span>`
+  ).join('');
+  $('#pickN').textContent = PICKS.length;
+  $('#picks').querySelectorAll('[data-x]').forEach(e => e.onclick = () => {
+    PICKS = PICKS.filter(p => p.c !== e.dataset.x); renderPicks();
+  });
+}
+
+// ---- 运行 ----
+$('#go').onclick = async () => {
+  const pool = $('#pool').value;
+  if (pool === 'custom' && PICKS.length === 0) { alert('请先选择至少一只股票'); return; }
+  const slv = $('#sl').value.split(':');
+  const ex = $('#exit').value.split(':');
+  const body = {
+    pool,
+    codes: PICKS.map(p=>p.c),
+    cost_on: $('#cost_on').checked,
+    params: {
+      rng: $('#rng').value, vol: $('#vol').value, stab: $('#stab').value,
+      buy_rule: $('#buy_rule').value,
+      sl_mode: slv[0], sl: parseFloat(slv[1]), atr_k: slv[0]==='atr'?parseFloat(slv[1]):null,
+      exit_mode: ex[0], tp: ex[0]==='fixed_tp'?parseFloat(ex[1]):null,
+      tp_half: ex[0]==='tp_half_ma5'?parseFloat(ex[1]):0.06,
+      max_hold: parseInt($('#max_hold').value||'20'),
+      slippage: parseFloat($('#slippage').value),
+      start: $('#start').value, end: $('#end').value,
+      regime_filter: $('#regime_filter').value || null
+    }
+  };
+  const btn = $('#go'); btn.disabled = true;
+  btn.innerHTML = '<i class="spin"></i>回测中…';
+  $('#out').innerHTML = '<div class="card"><div class="empty">回测计算中，全A股约需 20~60 秒…</div></div>';
+  try {
+    const t0 = performance.now();
+    const res = await (await fetch('/api/backtest', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})).json();
+    const el = ((performance.now()-t0)/1000).toFixed(1);
+    if (res.error) throw new Error(res.error);
+    $('#out').innerHTML = render(res, el);
+  } catch(e) {
+    $('#out').innerHTML = `<div class="card"><div class="empty">出错：${e.message}</div></div>`;
+  }
+  btn.disabled = false; btn.textContent = '运行回测';
+};
+
+// ---- 渲染 ----
+function render(r, el){
+  const m = r.metrics || {};
+  if (!m.n) return `<div class="card"><div class="empty">该参数组合在所选区间内没有产生任何交易。</div></div>`;
+  const cs = r.curve_stats || {};
+  const kpi = (k,v,c)=>`<div class="kpi"><div class="k">${k}</div><div class="v ${c||''}">${v}</div></div>`;
+  const h = [];
+  h.push(`<div class="card" style="margin-bottom:16px"><div class="hd">
+      核心指标 <span class="tag">交易笔数 ${fmtN(m.n)} · 耗时 ${el}s</span></div><div class="bd">
+      <div class="kpis">
+        ${kpi('单笔平均净收益', fmtP(m.avg_ret), cls(m.avg_ret))}
+        ${kpi('胜率', fmtP(m.win_rate))}
+        ${kpi('单笔中位数', fmtP(m.median_ret), cls(m.median_ret))}
+        ${kpi('t 统计量', fmt2(m.t_stat), Math.abs(m.t_stat)>=2?'pos':'')}
+        ${kpi('盈亏比', fmt2(m.profit_factor))}
+        ${kpi('平均盈利', fmtP(m.avg_win), 'pos')}
+        ${kpi('平均亏损', fmtP(m.avg_loss), 'neg')}
+        ${kpi('平均持有(日)', fmt2(m.avg_hold))}
+        ${kpi('组合总收益', fmtP(cs.total_ret), cls(cs.total_ret))}
+        ${kpi('年化', fmtP(cs.cagr), cls(cs.cagr))}
+        ${kpi('最大回撤', fmtP(cs.max_dd), 'neg')}
+        ${kpi('夏普', fmt2(cs.sharpe))}
+      </div>
+      <div class="hint">t 统计量 &gt; 2 表示单笔平均收益在 95% 置信水平上显著为正；&lt; 2 则不能拒绝“无优势”的原假设。
+      组合净值曲线按等权持有全部未平仓头寸合成，仅作参考，不等于可实盘复制的收益。</div>
+    </div></div>`);
+
+  h.push(`<div class="grid2" style="margin-bottom:16px">
+      <div class="card"><div class="hd">组合净值曲线</div><div class="bd">
+        ${lineChart(r.curve||[], cs)}</div></div>
+      <div class="card"><div class="hd">单笔净收益分布</div><div class="bd">
+        ${barChart((r.buckets||[]).map(b=>({l:b.bucket, v:b.pct_count, s:b.pct_sum})), true)}
+        <div class="lgd">柱高＝该区间交易占比；标注＝该区间对总收益的贡献占比</div></div></div>
+    </div>`);
+
+  h.push(`<div class="grid2" style="margin-bottom:16px">
+      <div class="card"><div class="hd">分年度单笔平均收益</div><div class="bd">
+        ${barChart((r.yearly||[]).map(y=>({l:y.year, v:y.avg})), false)}</div></div>
+      <div class="card"><div class="hd">退出原因</div><div class="bd sc">
+        <table><thead><tr><th>原因</th><th>笔数</th><th>占比</th><th>平均收益</th></tr></thead><tbody>
+        ${(r.exit_reasons||[]).map(x=>`<tr><td>${x.reason}</td><td>${fmtN(x.n)}</td>
+           <td>${fmtP(x.n/m.n)}</td><td class="${cls(x.avg)}">${fmtP(x.avg)}</td></tr>`).join('')}
+        </tbody></table></div></div>
+    </div>`);
+
+  h.push(`<div class="grid2" style="margin-bottom:16px">
+      <div class="card"><div class="hd">市场环境分层（按信号日）</div><div class="bd">
+        <table><thead><tr><th>环境</th><th>笔数</th><th>胜率</th><th>平均收益</th><th>t≈</th></tr></thead><tbody>
+        ${(r.regime||[]).map(x=>`<tr><td>${x.state}</td><td>${fmtN(x.n)}</td>
+           <td>${fmtP(x.win)}</td><td class="${cls(x.avg)}">${fmtP(x.avg)}</td>
+           <td>${fmt2(x.avg/(0.06/Math.sqrt(Math.max(x.n,1))))}</td></tr>`).join('')}
+        </tbody></table>
+        <table style="margin-top:8px"><thead><tr><th>指数位置</th><th>笔数</th><th>胜率</th><th>平均收益</th></tr></thead><tbody>
+        ${(r.above_ma60||[]).map(x=>`<tr><td>${x.label}</td><td>${fmtN(x.n)}</td>
+           <td>${fmtP(x.win)}</td><td class="${cls(x.avg)}">${fmtP(x.avg)}</td></tr>`).join('')}
+        </tbody></table></div></div>
+      <div class="card"><div class="hd">按超跌分位（D1=最超跌）</div><div class="bd sc">
+        <table><thead><tr><th>分位</th><th>笔数</th><th>胜率</th><th>平均收益</th></tr></thead><tbody>
+        ${(r.by_decile||[]).map(x=>`<tr><td>D${x.decile}</td><td>${fmtN(x.n)}</td>
+           <td>${fmtP(x.win)}</td><td class="${cls(x.avg)}">${fmtP(x.avg)}</td></tr>`).join('')}
+        </tbody></table></div></div>
+    </div>`);
+
+  h.push(`<div class="card"><div class="hd">最近 200 笔交易</div><div class="bd sc">
+      <table><thead><tr><th>代码</th><th>信号日</th><th>买入日</th><th>买入价</th>
+      <th>卖出日</th><th>卖出价</th><th>净收益</th><th>持有</th><th>退出原因</th></tr></thead><tbody>
+      ${(r.trades||[]).map(t=>`<tr><td>${t.code}</td><td>${t.signal_date}</td>
+        <td>${t.entry_date}</td><td>${fmt2(t.entry_px)}</td><td>${t.exit_date}</td>
+        <td>${fmt2(t.exit_px)}</td><td class="${cls(t.net_ret)}">${fmtP(t.net_ret)}</td>
+        <td>${t.hold_days}</td><td>${t.exit_reason}</td></tr>`).join('')}
+      </tbody></table></div></div>`);
+  return h.join('');
+}
+
+function lineChart(curve, cs){
+  if (!curve.length) return '<div class="empty">无数据</div>';
+  const W=520,H=210,pl=52,pr=12,pt=14,pb=26;
+  const vs = curve.map(d=>d[1]);
+  const lo = Math.min(...vs), hi = Math.max(...vs);
+  const pad=(hi-lo)*0.08||0.05; const a=lo-pad,b=hi+pad;
+  const x=i=>pl+(W-pl-pr)*i/(curve.length-1||1);
+  const y=v=>pt+(H-pt-pb)*(1-(v-a)/(b-a||1));
+  let path='';
+  curve.forEach((d,i)=>{ path += (i?'L':'M')+x(i).toFixed(1)+' '+y(d[1]).toFixed(1); });
+  const ticks=[0,1,2,3,4].map(k=>{const v=a+(b-a)*k/4;return {v,y:y(v)};});
+  const xl=[0,Math.floor(curve.length/2),curve.length-1].map(i=>({t:curve[i][0],x:x(i)}));
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">
+    ${ticks.map(t=>`<line x1="${pl}" x2="${W-pr}" y1="${t.y.toFixed(1)}" y2="${t.y.toFixed(1)}"
+       stroke="#eef1f5"/><text x="${pl-6}" y="${(t.y+4).toFixed(1)}" font-size="10"
+       fill="#8b95a7" text-anchor="end">${t.v.toFixed(2)}</text>`).join('')}
+    <line x1="${pl}" x2="${W-pr}" y1="${y(1).toFixed(1)}" y2="${y(1).toFixed(1)}"
+       stroke="#c8d0dc" stroke-dasharray="3 3"/>
+    <path d="${path}" fill="none" stroke="#2b6cb0" stroke-width="1.6"/>
+    ${xl.map(t=>`<text x="${t.x.toFixed(1)}" y="${H-8}" font-size="10" fill="#8b95a7"
+       text-anchor="middle">${t.t}</text>`).join('')}
+  </svg>
+  <div class="lgd">虚线＝1.0 基准；总收益 ${fmtP(cs.total_ret)}，年化 ${fmtP(cs.cagr)}，最大回撤 ${fmtP(cs.max_dd)}</div>`;
+}
+
+function barChart(data, isDist){
+  if (!data.length) return '<div class="empty">无数据</div>';
+  const W=520,H=210,pl=44,pr=10,pt=16,pb=42;
+  const vs = data.map(d=>d.v);
+  const mx = Math.max(...vs.map(Math.abs)) || 1;
+  const n = data.length;
+  const bw = (W-pl-pr)/n;
+  const zero = pt + (H-pt-pb)/2;
+  const scale = (H-pt-pb)/2/mx;
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">
+    <line x1="${pl}" x2="${W-pr}" y1="${zero.toFixed(1)}" y2="${zero.toFixed(1)}" stroke="#c8d0dc"/>
+    ${data.map((d,i)=>{
+      const hgt = Math.abs(d.v)*scale;
+      const yy = d.v>=0 ? zero-hgt : zero;
+      const col = d.v>=0 ? '#d5372c' : '#12885b';
+      const lbl = isDist ? (d.s!=null ? (d.s*100).toFixed(1)+'%' : '') : (d.v*100).toFixed(2);
+      return `<rect x="${(pl+i*bw+bw*0.18).toFixed(1)}" y="${yy.toFixed(1)}"
+                width="${(bw*0.64).toFixed(1)}" height="${Math.max(hgt,0.6).toFixed(1)}"
+                fill="${col}" opacity="0.85"/>
+              <text x="${(pl+i*bw+bw/2).toFixed(1)}" y="${(yy-3).toFixed(1)}" font-size="9"
+                fill="#5b6577" text-anchor="middle">${isDist?lbl:(d.v*100).toFixed(1)}</text>
+              <text x="${(pl+i*bw+bw/2).toFixed(1)}" y="${H-28}" font-size="9.5"
+                fill="#8b95a7" text-anchor="middle">${d.l}</text>`;
+    }).join('')}
+  </svg>`;
+}
+</script>
+</body>
+</html>
